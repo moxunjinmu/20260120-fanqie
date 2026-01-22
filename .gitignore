@@ -30,6 +30,11 @@ pnpm-debug.log*
 .idea/
 *.code-workspace
 
+# Local config (dot folders)
+.cursor/
+.kiro/
+.shared/
+
 # OS files
 .DS_Store
 Thumbs.db
