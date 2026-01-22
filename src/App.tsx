@@ -4,9 +4,15 @@ import {
   requestPermission,
   sendNotification,
 } from "@tauri-apps/plugin-notification";
-import { formatDateKey, formatSeconds, minutesToSeconds } from "./lib/time";
+import { formatDateKey, minutesToSeconds } from "./lib/time";
 import { isTauri } from "./lib/tauri";
 import { loadState, saveState } from "./lib/store";
+import { TimerCircle, TimerControls, PhaseSelector } from "./components/timer";
+import { TaskList } from "./components/tasks/TaskList";
+import { TaskForm } from "./components/tasks/TaskForm";
+import type { TaskFilterType } from "./components/tasks/TaskFilter";
+import { CurrentTaskDisplay, TodayStats } from "./components/stats";
+import { TimerSettings, PreferenceSettings, OtherSettings } from "./components/settings";
 import type {
   AppStateSnapshot,
   DailyStat,
@@ -211,19 +217,13 @@ const App = () => {
   const [viewMode, setViewMode] = useState<ViewMode>("main");
   const [taskFormOpen, setTaskFormOpen] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
-  const [taskFormTitle, setTaskFormTitle] = useState("");
-  const [taskFormEstPomodoros, setTaskFormEstPomodoros] = useState(1);
-  const [taskFilter, setTaskFilter] = useState<"active" | "completed">("active");
+  const [taskFilter, setTaskFilter] = useState<TaskFilterType>("active");
+  const [settingsTab, setSettingsTab] = useState<"timer" | "preference" | "other">("timer");
 
   const totalSeconds = useMemo(
     () => minutesToSeconds(phaseMinutes(phase, settings)),
     [phase, settings],
   );
-
-  const progressRatio = totalSeconds > 0 ? remainingSeconds / totalSeconds : 0;
-  const radius = 96;
-  const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference * (1 - progressRatio);
 
   const todayKey = formatDateKey(new Date());
   const todayStats = history[todayKey] ?? getDefaultDailyStat(todayKey);
@@ -231,26 +231,6 @@ const App = () => {
   const currentTask = useMemo(
     () => tasks.find((task) => task.id === currentTaskId) ?? null,
     [tasks, currentTaskId],
-  );
-
-  const filteredTasks = useMemo(
-    () =>
-      tasks.filter((task) => {
-        if (taskFilter === "active") return !task.completed;
-        return task.completed;
-      }),
-    [tasks, taskFilter],
-  );
-
-  const sortedTasks = useMemo(
-    () =>
-      [...filteredTasks].sort((a, b) => {
-        if (taskFilter === "active") {
-          return a.createdAt - b.createdAt;
-        }
-        return b.createdAt - a.createdAt;
-      }),
-    [filteredTasks, taskFilter],
   );
 
   const setPhaseAndReset = useCallback(
@@ -361,52 +341,41 @@ const App = () => {
 
   const handleOpenTaskForm = useCallback(() => {
     setEditingTaskId(null);
-    setTaskFormTitle("");
-    setTaskFormEstPomodoros(1);
     setTaskFormOpen(true);
   }, []);
 
   const handleEditTask = useCallback(
     (taskId: string) => {
-      const task = tasks.find((t) => t.id === taskId);
-      if (task) {
-        setEditingTaskId(taskId);
-        setTaskFormTitle(task.title);
-        setTaskFormEstPomodoros(task.estPomodoros);
-        setTaskFormOpen(true);
-      }
+      setEditingTaskId(taskId);
+      setTaskFormOpen(true);
     },
-    [tasks],
+    [],
   );
 
-  const handleSaveTask = useCallback(() => {
-    const trimmedTitle = taskFormTitle.trim();
-    if (!trimmedTitle) return;
-
-    if (editingTaskId) {
-      setTasks((prev) =>
-        prev.map((task) =>
-          task.id === editingTaskId
-            ? { ...task, title: trimmedTitle, estPomodoros: taskFormEstPomodoros }
-            : task,
-        ),
-      );
-    } else {
-      const newTask: Task = {
-        id: crypto.randomUUID(),
-        title: trimmedTitle,
-        estPomodoros: taskFormEstPomodoros,
-        completedPomodoros: 0,
-        completed: false,
-        createdAt: Date.now(),
-      };
-      setTasks((prev) => [...prev, newTask]);
-    }
-    setTaskFormOpen(false);
-    setEditingTaskId(null);
-    setTaskFormTitle("");
-    setTaskFormEstPomodoros(1);
-  }, [editingTaskId, taskFormTitle, taskFormEstPomodoros]);
+  const handleSaveTask = useCallback(
+    (title: string, estPomodoros: number) => {
+      if (editingTaskId) {
+        setTasks((prev) =>
+          prev.map((task) =>
+            task.id === editingTaskId ? { ...task, title, estPomodoros } : task,
+          ),
+        );
+      } else {
+        const newTask: Task = {
+          id: crypto.randomUUID(),
+          title,
+          estPomodoros,
+          completedPomodoros: 0,
+          completed: false,
+          createdAt: Date.now(),
+        };
+        setTasks((prev) => [...prev, newTask]);
+      }
+      setTaskFormOpen(false);
+      setEditingTaskId(null);
+    },
+    [editingTaskId],
+  );
 
   const handleDeleteTask = useCallback(
     (taskId: string) => {
@@ -453,6 +422,17 @@ const App = () => {
     },
     [phase, status],
   );
+
+  const updateLongBreakEvery = useCallback((value: number) => {
+    setSettings((prev) => ({
+      ...prev,
+      longBreakEvery: Math.min(8, Math.max(2, value)),
+    }));
+  }, []);
+
+  const updateSettings = useCallback((updates: Partial<Settings>) => {
+    setSettings((prev) => ({ ...prev, ...updates }));
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -572,503 +552,142 @@ const App = () => {
               </div>
 
               <div className="flex flex-col items-center gap-4">
-                <div className="relative flex h-56 w-56 items-center justify-center">
-                  <svg className="h-full w-full progress-ring" viewBox="0 0 220 220">
-                    <circle
-                      cx="110"
-                      cy="110"
-                      r={radius}
-                      fill="none"
-                      stroke="rgba(148, 163, 184, 0.25)"
-                      strokeWidth="14"
-                    />
-                    <circle
-                      cx="110"
-                      cy="110"
-                      r={radius}
-                      fill="none"
-                      stroke="url(#timerGradient)"
-                      strokeWidth="14"
-                      strokeLinecap="round"
-                      strokeDasharray={circumference}
-                      strokeDashoffset={strokeDashoffset}
-                    />
-                    <defs>
-                      <linearGradient id="timerGradient" x1="0" y1="0" x2="1" y2="1">
-                        <stop offset="0%" stopColor="#6366f1" />
-                        <stop offset="100%" stopColor="#22c55e" />
-                      </linearGradient>
-                    </defs>
-                  </svg>
-                  <div className="absolute text-center">
-                    <p className="text-4xl font-semibold text-slate-900 text-shadow-soft">
-                      {formatSeconds(remainingSeconds)}
-                    </p>
-                    <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-400">
-                      {Math.ceil(remainingSeconds / 60)} min left
-                    </p>
-                  </div>
-                </div>
+                <TimerCircle remainingSeconds={remainingSeconds} totalSeconds={totalSeconds} />
 
-                <div className="flex flex-wrap items-center justify-center gap-3">
-                  {status === "running" ? (
-                    <button
-                      className="rounded-full bg-slate-900 px-6 py-3 text-sm font-semibold text-white shadow-glass"
-                      onClick={handlePause}
-                    >
-                      暂停
-                    </button>
-                  ) : (
-                    <button
-                      className="rounded-full bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-glass"
-                      onClick={handleStart}
-                    >
-                      {status === "paused" ? "继续" : "开始"}
-                    </button>
-                  )}
-                  <button
-                    className="rounded-full border border-slate-200 bg-white/80 px-6 py-3 text-sm font-semibold text-slate-600"
-                    onClick={handleReset}
-                  >
-                    重置
-                  </button>
-                  <button
-                    className="rounded-full border border-slate-200 bg-white/80 px-6 py-3 text-sm font-semibold text-slate-600"
-                    onClick={handleSkip}
-                  >
-                    跳过
-                  </button>
-                </div>
+                <TimerControls
+                  status={status}
+                  onStart={handleStart}
+                  onPause={handlePause}
+                  onReset={handleReset}
+                  onSkip={handleSkip}
+                />
 
-                <div className="flex flex-wrap items-center justify-center gap-2">
-                  {(["work", "shortBreak", "longBreak"] as Phase[]).map((item) => (
-                    <button
-                      key={item}
-                      className={`rounded-full px-4 py-1.5 text-xs font-semibold transition ${
-                        phase === item
-                          ? "bg-indigo-100 text-indigo-700"
-                          : "bg-white/70 text-slate-500"
-                      }`}
-                      onClick={() => setPhaseAndReset(item)}
-                    >
-                      {PHASE_LABEL[item]}
-                    </button>
-                  ))}
-                </div>
+                <PhaseSelector currentPhase={phase} onPhaseChange={setPhaseAndReset} />
               </div>
 
               <div className="grid gap-4 rounded-2xl border border-white/60 bg-white/60 p-4">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-slate-400">当前任务</p>
-                  {currentTask ? (
-                    <div className="mt-2 flex items-center justify-between">
-                      <p className="text-sm text-slate-700">{currentTask.title}</p>
-                      <div className="flex items-center gap-1 text-xs text-slate-500">
-                        <span>{currentTask.completedPomodoros}</span>
-                        <span className="text-slate-300">/</span>
-                        <span>{currentTask.estPomodoros}</span>
-                        <button
-                          className="ml-2 rounded-full border border-slate-200 bg-white/80 px-2 py-0.5 text-xs text-slate-600 hover:bg-white"
-                          onClick={handleClearCurrentTask}
-                        >
-                          切换
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="mt-2 text-sm text-slate-500">未选择任务</p>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-4 text-sm text-slate-600">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">今日专注</p>
-                    <p className="mt-1 text-lg font-semibold text-slate-900">
-                      {todayStats.focusMinutes} 分钟
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.2em] text-slate-400">完成番茄</p>
-                    <p className="mt-1 text-lg font-semibold text-slate-900">
-                      {todayStats.sessions} 次
-                    </p>
-                  </div>
-                </div>
+                <CurrentTaskDisplay currentTask={currentTask} onClearTask={handleClearCurrentTask} />
+                <TodayStats focusMinutes={todayStats.focusMinutes} sessions={todayStats.sessions} />
               </div>
             </section>
 
             <section className="flex flex-col gap-6">
               <div className="mica-panel p-6">
                 <h2 className="text-lg font-semibold text-slate-900">计时设置</h2>
-                <div className="mt-4 grid gap-4 text-sm text-slate-600">
-                  <label className="flex items-center justify-between gap-4">
-                    <span>专注时长（分钟）</span>
-                    <input
-                      className="w-20 rounded-lg border border-slate-200 px-3 py-2 text-right"
-                      type="number"
-                      min={1}
-                      max={120}
-                      value={settings.workMinutes}
-                      onChange={(event) => updateMinutes("workMinutes", Number(event.target.value))}
-                    />
-                  </label>
-                  <label className="flex items-center justify-between gap-4">
-                    <span>短休时长（分钟）</span>
-                    <input
-                      className="w-20 rounded-lg border border-slate-200 px-3 py-2 text-right"
-                      type="number"
-                      min={1}
-                      max={120}
-                      value={settings.shortBreakMinutes}
-                      onChange={(event) =>
-                        updateMinutes("shortBreakMinutes", Number(event.target.value))
-                      }
-                    />
-                  </label>
-                  <label className="flex items-center justify-between gap-4">
-                    <span>长休时长（分钟）</span>
-                    <input
-                      className="w-20 rounded-lg border border-slate-200 px-3 py-2 text-right"
-                      type="number"
-                      min={1}
-                      max={120}
-                      value={settings.longBreakMinutes}
-                      onChange={(event) =>
-                        updateMinutes("longBreakMinutes", Number(event.target.value))
-                      }
-                    />
-                  </label>
-                  <label className="flex items-center justify-between gap-4">
-                    <span>每轮长休间隔</span>
-                    <input
-                      className="w-20 rounded-lg border border-slate-200 px-3 py-2 text-right"
-                      type="number"
-                      min={2}
-                      max={8}
-                      value={settings.longBreakEvery}
-                      onChange={(event) =>
-                        setSettings((prev) => ({
-                          ...prev,
-                          longBreakEvery: Math.min(8, Math.max(2, Number(event.target.value))),
-                        }))
-                      }
-                    />
-                  </label>
+                <div className="mt-4">
+                  <TimerSettings
+                    settings={settings}
+                    onUpdateMinutes={updateMinutes}
+                    onUpdateLongBreakEvery={updateLongBreakEvery}
+                  />
                 </div>
               </div>
 
-              <div className="mica-panel flex flex-col gap-4 p-6">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-semibold text-slate-900">任务列表</h2>
-                  <button
-                    className="rounded-full bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-glass transition hover:bg-indigo-700"
-                    onClick={handleOpenTaskForm}
-                  >
-                    + 新增任务
-                  </button>
-                </div>
-
-                <div className="flex gap-2 rounded-lg bg-white/60 p-1">
-                  <button
-                    className={`flex-1 rounded-md px-3 py-1.5 text-xs font-semibold transition ${
-                      taskFilter === "active" ? "bg-white text-slate-700 shadow-sm" : "text-slate-500"
-                    }`}
-                    onClick={() => setTaskFilter("active")}
-                  >
-                    待办 ({tasks.filter((t) => !t.completed).length})
-                  </button>
-                  <button
-                    className={`flex-1 rounded-md px-3 py-1.5 text-xs font-semibold transition ${
-                      taskFilter === "completed" ? "bg-white text-slate-700 shadow-sm" : "text-slate-500"
-                    }`}
-                    onClick={() => setTaskFilter("completed")}
-                  >
-                    已完成 ({tasks.filter((t) => t.completed).length})
-                  </button>
-                </div>
-
-                <div className="flex max-h-[280px] flex-col gap-2 overflow-y-auto scrollbar-hidden">
-                  {sortedTasks.length === 0 ? (
-                    <p className="py-8 text-center text-sm text-slate-400">
-                      {taskFilter === "active" ? "暂无待办任务" : "暂无已完成任务"}
-                    </p>
-                  ) : (
-                    sortedTasks.map((task) => (
-                      <div
-                        key={task.id}
-                        className={`group rounded-xl border p-3 transition ${
-                          currentTaskId === task.id
-                            ? "border-indigo-300 bg-indigo-50/50"
-                            : "border-white/60 bg-white/60 hover:border-slate-200"
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex min-w-0 flex-1 flex-col gap-1">
-                            <p
-                              className={`text-sm font-medium ${
-                                task.completed ? "text-slate-400 line-through" : "text-slate-700"
-                              }`}
-                            >
-                              {task.title}
-                            </p>
-                            <div className="flex items-center gap-2 text-xs text-slate-500">
-                              <span>
-                                {task.completedPomodoros}/{task.estPomodoros}
-                              </span>
-                              <span className="text-slate-300">|</span>
-                              <span>🍅 x {task.estPomodoros}</span>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            {taskFilter === "active" && (
-                              <>
-                                <button
-                                  className="rounded-full p-1.5 text-slate-400 opacity-0 transition hover:bg-white hover:text-indigo-600 group-hover:opacity-100"
-                                  onClick={() => handleEditTask(task.id)}
-                                  title="编辑"
-                                >
-                                  ✏️
-                                </button>
-                                <button
-                                  className="rounded-full p-1.5 text-slate-400 opacity-0 transition hover:bg-white hover:text-red-500 group-hover:opacity-100"
-                                  onClick={() => handleDeleteTask(task.id)}
-                                  title="删除"
-                                >
-                                  🗑️
-                                </button>
-                              </>
-                            )}
-                            {taskFilter === "completed" && (
-                              <button
-                                className="rounded-full p-1.5 text-slate-400 opacity-0 transition hover:bg-white hover:text-amber-500 group-hover:opacity-100"
-                                onClick={() => handleToggleTaskComplete(task.id)}
-                                title="恢复为待办"
-                              >
-                                ↩️
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                        {taskFilter === "active" && (
-                          <button
-                            className={`mt-2 w-full rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                              currentTaskId === task.id
-                                ? "bg-indigo-600 text-white"
-                                : "border border-slate-200 bg-white/80 text-slate-600 hover:bg-white"
-                            }`}
-                            onClick={() => handleSelectTask(task.id)}
-                          >
-                            {currentTaskId === task.id ? "当前任务" : "选择此任务"}
-                          </button>
-                        )}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
+              <TaskList
+                tasks={tasks}
+                currentTaskId={currentTaskId}
+                filter={taskFilter}
+                onFilterChange={setTaskFilter}
+                onSelectTask={handleSelectTask}
+                onEditTask={handleEditTask}
+                onDeleteTask={handleDeleteTask}
+                onToggleComplete={handleToggleTaskComplete}
+                onOpenForm={handleOpenTaskForm}
+              />
             </section>
           </>
         ) : (
-          <section className="mica-panel col-span-full max-w-2xl mx-auto flex flex-col gap-6 p-8">
-            <div className="flex items-center justify-between">
-              <h2 className="text-2xl font-semibold text-slate-900">设置</h2>
+          <section className="mica-panel col-span-full flex gap-6 p-8">
+            {/* 左侧导航 */}
+            <nav className="flex w-56 flex-col gap-2">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-slate-900">设置</h2>
+                <button
+                  className="rounded-full p-1.5 text-slate-400 transition hover:bg-white/80 hover:text-slate-600"
+                  onClick={() => setViewMode("main")}
+                  title="返回"
+                >
+                  ✕
+                </button>
+              </div>
+
               <button
-                className="rounded-full border border-slate-200 bg-white/80 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-white"
-                onClick={() => setViewMode("main")}
+                className={`flex items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium transition ${
+                  settingsTab === "timer"
+                    ? "bg-indigo-50 text-indigo-700 shadow-sm"
+                    : "text-slate-600 hover:bg-white/60"
+                }`}
+                onClick={() => setSettingsTab("timer")}
               >
-                返回
+                <span className="text-lg">⏱</span>
+                <span>计时设置</span>
               </button>
-            </div>
 
-            <div className="mica-panel p-6">
-              <h3 className="text-lg font-semibold text-slate-900">计时设置</h3>
-              <div className="mt-4 grid gap-4 text-sm text-slate-600">
-                <label className="flex items-center justify-between gap-4">
-                  <span>专注时长（分钟）</span>
-                  <input
-                    className="w-20 rounded-lg border border-slate-200 px-3 py-2 text-right"
-                    type="number"
-                    min={1}
-                    max={120}
-                    value={settings.workMinutes}
-                    onChange={(event) => updateMinutes("workMinutes", Number(event.target.value))}
-                  />
-                </label>
-                <label className="flex items-center justify-between gap-4">
-                  <span>短休时长（分钟）</span>
-                  <input
-                    className="w-20 rounded-lg border border-slate-200 px-3 py-2 text-right"
-                    type="number"
-                    min={1}
-                    max={120}
-                    value={settings.shortBreakMinutes}
-                    onChange={(event) =>
-                      updateMinutes("shortBreakMinutes", Number(event.target.value))
-                    }
-                  />
-                </label>
-                <label className="flex items-center justify-between gap-4">
-                  <span>长休时长（分钟）</span>
-                  <input
-                    className="w-20 rounded-lg border border-slate-200 px-3 py-2 text-right"
-                    type="number"
-                    min={1}
-                    max={120}
-                    value={settings.longBreakMinutes}
-                    onChange={(event) =>
-                      updateMinutes("longBreakMinutes", Number(event.target.value))
-                    }
-                  />
-                </label>
-                <label className="flex items-center justify-between gap-4">
-                  <span>每轮长休间隔</span>
-                  <input
-                    className="w-20 rounded-lg border border-slate-200 px-3 py-2 text-right"
-                    type="number"
-                    min={2}
-                    max={8}
-                    value={settings.longBreakEvery}
-                    onChange={(event) =>
-                      setSettings((prev) => ({
-                        ...prev,
-                        longBreakEvery: Math.min(8, Math.max(2, Number(event.target.value))),
-                      }))
-                    }
-                  />
-                </label>
-              </div>
-            </div>
+              <button
+                className={`flex items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium transition ${
+                  settingsTab === "preference"
+                    ? "bg-indigo-50 text-indigo-700 shadow-sm"
+                    : "text-slate-600 hover:bg-white/60"
+                }`}
+                onClick={() => setSettingsTab("preference")}
+              >
+                <span className="text-lg">🎨</span>
+                <span>偏好设置</span>
+              </button>
 
-            <div className="mica-panel p-6">
-              <h3 className="text-lg font-semibold text-slate-900">偏好设置</h3>
-              <div className="mt-4 grid gap-3 text-sm text-slate-600">
-                <label className="flex items-center justify-between gap-4">
-                  <span>自动开始下一阶段</span>
-                  <input
-                    type="checkbox"
-                    checked={settings.autoStartNext}
-                    onChange={(event) =>
-                      setSettings((prev) => ({ ...prev, autoStartNext: event.target.checked }))
-                    }
-                  />
-                </label>
-                <label className="flex items-center justify-between gap-4">
-                  <span>结束提示音</span>
-                  <input
-                    type="checkbox"
-                    checked={settings.soundEnabled}
-                    onChange={(event) =>
-                      setSettings((prev) => ({ ...prev, soundEnabled: event.target.checked }))
-                    }
-                  />
-                </label>
-                <label className="flex items-center justify-between gap-4">
-                  <span>专注白噪音</span>
-                  <input
-                    type="checkbox"
-                    checked={settings.whiteNoiseEnabled}
-                    onChange={(event) =>
-                      setSettings((prev) => ({ ...prev, whiteNoiseEnabled: event.target.checked }))
-                    }
-                  />
-                </label>
-                <label className="flex items-center justify-between gap-4">
-                  <span>白噪音类型</span>
-                  <select
-                    className="rounded-lg border border-slate-200 bg-white px-2 py-1"
-                    value={settings.whiteNoiseType}
-                    onChange={(event) =>
-                      setSettings((prev) => ({
-                        ...prev,
-                        whiteNoiseType: event.target.value as NoiseType,
-                      }))
-                    }
-                  >
-                    <option value="rain">雨声</option>
-                    <option value="cafe">咖啡馆</option>
-                    <option value="fire">篝火</option>
-                  </select>
-                </label>
-              </div>
-            </div>
+              <button
+                className={`flex items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-medium transition ${
+                  settingsTab === "other"
+                    ? "bg-indigo-50 text-indigo-700 shadow-sm"
+                    : "text-slate-600 hover:bg-white/60"
+                }`}
+                onClick={() => setSettingsTab("other")}
+              >
+                <span className="text-lg">⚙️</span>
+                <span>其他设置</span>
+              </button>
+            </nav>
 
-            <div className="mica-panel p-6">
-              <h3 className="text-lg font-semibold text-slate-900">其他设置</h3>
-              <div className="mt-4 grid gap-3 text-sm text-slate-600">
-                <label className="flex items-center justify-between gap-4">
-                  <span>迷你模式（悬浮窗）</span>
-                  <input
-                    type="checkbox"
-                    checked={settings.miniMode}
-                    onChange={(event) =>
-                      setSettings((prev) => ({ ...prev, miniMode: event.target.checked }))
-                    }
+            {/* 右侧内容区 */}
+            <div className="flex-1">
+              {settingsTab === "timer" && (
+                <div className="mica-panel p-6">
+                  <h3 className="mb-1 text-lg font-semibold text-slate-900">计时设置</h3>
+                  <p className="mb-6 text-sm text-slate-500">自定义番茄钟和休息时长</p>
+                  <TimerSettings
+                    settings={settings}
+                    onUpdateMinutes={updateMinutes}
+                    onUpdateLongBreakEvery={updateLongBreakEvery}
                   />
-                </label>
-                <label className="flex items-center justify-between gap-4">
-                  <span>最小化到系统托盘</span>
-                  <input
-                    type="checkbox"
-                    checked={settings.minimizeToTray}
-                    onChange={(event) =>
-                      setSettings((prev) => ({ ...prev, minimizeToTray: event.target.checked }))
-                    }
-                  />
-                </label>
-              </div>
+                </div>
+              )}
+
+              {settingsTab === "preference" && (
+                <div className="mica-panel p-6">
+                  <h3 className="mb-1 text-lg font-semibold text-slate-900">偏好设置</h3>
+                  <p className="mb-6 text-sm text-slate-500">配置声音、白噪音和自动化选项</p>
+                  <PreferenceSettings settings={settings} onUpdateSettings={updateSettings} />
+                </div>
+              )}
+
+              {settingsTab === "other" && (
+                <div className="mica-panel p-6">
+                  <h3 className="mb-1 text-lg font-semibold text-slate-900">其他设置</h3>
+                  <p className="mb-6 text-sm text-slate-500">窗口和系统集成选项</p>
+                  <OtherSettings settings={settings} onUpdateSettings={updateSettings} />
+                </div>
+              )}
             </div>
           </section>
         )}
       </div>
 
-      {taskFormOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
-          <div className="mica-panel w-full max-w-md p-6">
-            <h3 className="text-lg font-semibold text-slate-900">
-              {editingTaskId ? "编辑任务" : "新增任务"}
-            </h3>
-            <div className="mt-4 grid gap-4">
-              <div>
-                <label className="text-sm font-medium text-slate-700">任务名称</label>
-                <input
-                  className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
-                  type="text"
-                  placeholder="输入任务名称..."
-                  value={taskFormTitle}
-                  onChange={(event) => setTaskFormTitle(event.target.value)}
-                  autoFocus
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-slate-700">预估番茄数</label>
-                <input
-                  className="mt-1.5 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-slate-900"
-                  type="number"
-                  min={1}
-                  max={20}
-                  value={taskFormEstPomodoros}
-                  onChange={(event) =>
-                    setTaskFormEstPomodoros(Math.min(20, Math.max(1, Number(event.target.value) || 1)))
-                  }
-                />
-              </div>
-            </div>
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                className="rounded-full border border-slate-200 bg-white/80 px-6 py-2 text-sm font-semibold text-slate-600 hover:bg-white"
-                onClick={() => setTaskFormOpen(false)}
-              >
-                取消
-              </button>
-              <button
-                className="rounded-full bg-indigo-600 px-6 py-2 text-sm font-semibold text-white shadow-glass hover:bg-indigo-700"
-                onClick={handleSaveTask}
-              >
-                保存
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <TaskForm
+        isOpen={taskFormOpen}
+        editingTask={editingTaskId ? tasks.find((t) => t.id === editingTaskId) ?? null : null}
+        onSave={handleSaveTask}
+        onClose={() => setTaskFormOpen(false)}
+      />
     </div>
   );
 };
