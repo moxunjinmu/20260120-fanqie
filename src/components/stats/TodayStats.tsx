@@ -2,10 +2,10 @@ import { memo } from "react";
 
 interface TodayStatsProps {
   focusMinutes: number;
-  sessions: number;
+  completedPomodoros: number;
 }
 
-export const TodayStats = memo<TodayStatsProps>(({ focusMinutes, sessions }) => {
+export const TodayStats = memo<TodayStatsProps>(({ focusMinutes, completedPomodoros }) => {
   return (
     <div className="grid grid-cols-2 gap-4 text-sm text-slate-600">
       <div>
@@ -14,7 +14,7 @@ export const TodayStats = memo<TodayStatsProps>(({ focusMinutes, sessions }) => 
       </div>
       <div>
         <p className="text-xs uppercase tracking-[0.2em] text-slate-400">完成番茄</p>
-        <p className="mt-1 text-lg font-semibold text-slate-900">{sessions} 次</p>
+        <p className="mt-1 text-lg font-semibold text-slate-900">{completedPomodoros} 次</p>
       </div>
     </div>
   );

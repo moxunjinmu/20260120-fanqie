@@ -126,7 +126,94 @@ src/
 ```
 
 后续待办（非下一步）：
-- 统计趋势图（7/30 天）与历史记录
+- 迷你悬浮窗（Mini Mode）
+- 系统托盘与快捷菜单
+- 开机自启 + 最小化启动
+- Windows 专注助手（DND）联动
+
+### Step 7（2026-01-22）- 统计趋势图与历史记录
+
+已完成需求：
+
+**数据处理层：**
+
+- 类型定义：TimeRange 类型（7天/30天/全部）、ChartDataPoint 接口
+- 日期工具函数：calculateStartDate、generateDateRange、formatDate（今天/昨天/日期）
+- 数据验证：validateAndCleanHistory（处理格式错误、缺失字段）
+- 数据处理：processHistoryData（时间范围过滤、零值填充、排序）
+- 聚合计算：calculateTotals（总专注分钟数、总完成番茄数）
+- 单元测试：16个测试全部通过，覆盖所有数据处理函数
+
+**统计组件：**
+
+- EmptyState 组件：空状态提示，使用 SVG 图标（非 emoji）
+- TimeRangeSelector 组件：三个时间范围按钮（7天/30天/全部）
+- HistoryListItem 组件：单个历史记录项，显示日期、分钟数、番茄数
+- HistoryList 组件：历史记录列表，倒序排列，使用 useMemo 优化
+- TrendChart 组件：Recharts 柱状图，双 Y 轴，indigo/emerald 配色
+- StatisticsPage 组件：主统计页面，集成所有子组件
+- StatisticsErrorBoundary 组件：错误边界，友好的错误提示和重试功能
+- 总计：7个新组件，所有组件均使用 React.memo 优化
+
+**应用集成：**
+
+- ViewMode 类型：添加 "statistics" 视图模式
+- 导航按钮：主界面添加"统计"按钮，与设置按钮并列
+- 统计视图：全屏统计页面，包含返回按钮
+- 错误处理：使用 StatisticsErrorBoundary 包装 StatisticsPage
+- 数据绑定：从 App.tsx 传递 history 状态到 StatisticsPage
+
+**UI/UX 设计：**
+
+- Windows 11 Mica 玻璃效果：所有组件使用 mica-panel 样式
+- 配色一致性：使用 indigo-400/emerald-400 匹配应用主题
+- 交互反馈：所有可交互元素添加 hover 效果和 cursor-pointer
+- 平滑过渡：使用 transition-colors duration-200
+- 响应式布局：使用 flex、gap、space-y 等实现自适应
+
+**测试与验证：**
+
+- 单元测试：47个测试全部通过（100% 通过率）
+- 组件测试：EmptyState、TimeRangeSelector、HistoryListItem、HistoryList、TrendChart、StatisticsPage
+- 数据处理测试：所有工具函数的单元测试
+- TypeScript 编译：无错误
+- 生产构建：成功构建
+
+**依赖安装：**
+
+- recharts: ^3.7.0（图表渲染库）
+- fast-check: ^4.5.3（属性测试库，用于未来的 PBT）
+- vitest: ^4.0.17（测试框架，已配置）
+
+**项目结构更新：**
+
+```text
+src/
+├── components/
+│   ├── statistics/     # 统计组件（7个新组件）
+│   │   ├── EmptyState.tsx
+│   │   ├── TimeRangeSelector.tsx
+│   │   ├── HistoryListItem.tsx
+│   │   ├── HistoryList.tsx
+│   │   ├── TrendChart.tsx
+│   │   ├── StatisticsPage.tsx
+│   │   ├── StatisticsErrorBoundary.tsx
+│   │   └── index.ts
+│   ├── timer/          # 计时器组件（3个）
+│   ├── tasks/          # 任务管理组件（4个）
+│   ├── settings/       # 设置组件（3个）
+│   ├── stats/          # 统计组件（2个）
+│   └── ui/             # 通用UI组件（4个）
+├── lib/
+│   ├── statistics.ts   # 统计数据处理函数
+│   └── ...
+├── types/
+│   ├── statistics.ts   # 统计类型定义
+│   └── ...
+└── App.tsx             # 主应用（集成统计视图）
+```
+
+后续待办：
 - 迷你悬浮窗（Mini Mode）
 - 系统托盘与快捷菜单
 - 开机自启 + 最小化启动

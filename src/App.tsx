@@ -13,6 +13,7 @@ import { TaskForm } from "./components/tasks/TaskForm";
 import type { TaskFilterType } from "./components/tasks/TaskFilter";
 import { CurrentTaskDisplay, TodayStats } from "./components/stats";
 import { TimerSettings, PreferenceSettings, OtherSettings } from "./components/settings";
+import { StatisticsPage, StatisticsErrorBoundary } from "./components/statistics";
 import type {
   AppStateSnapshot,
   DailyStat,
@@ -65,7 +66,7 @@ const phaseMinutes = (phase: Phase, settings: Settings) => {
 const getDefaultDailyStat = (dateKey: string): DailyStat => ({
   date: dateKey,
   focusMinutes: 0,
-  sessions: 0,
+  completedPomodoros: 0,
 });
 
 const getNextPhase = (
@@ -92,7 +93,7 @@ const getPhaseIcon = (phase: Phase) => {
   return "🌿";
 };
 
-type ViewMode = "main" | "settings";
+type ViewMode = "main" | "settings" | "statistics";
 
 const useNotification = () => {
   return async (title: string, body: string) => {
@@ -254,7 +255,7 @@ const App = () => {
           [key]: {
             ...current,
             focusMinutes: current.focusMinutes + settings.workMinutes,
-            sessions: current.sessions + 1,
+            completedPomodoros: current.completedPomodoros + 1,
           },
         };
       });
@@ -544,6 +545,12 @@ const App = () => {
                   </div>
                   <button
                     className="rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-white"
+                    onClick={() => setViewMode("statistics")}
+                  >
+                    统计
+                  </button>
+                  <button
+                    className="rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-white"
                     onClick={() => setViewMode("settings")}
                   >
                     设置
@@ -567,7 +574,7 @@ const App = () => {
 
               <div className="grid gap-4 rounded-2xl border border-white/60 bg-white/60 p-4">
                 <CurrentTaskDisplay currentTask={currentTask} onClearTask={handleClearCurrentTask} />
-                <TodayStats focusMinutes={todayStats.focusMinutes} sessions={todayStats.sessions} />
+                <TodayStats focusMinutes={todayStats.focusMinutes} completedPomodoros={todayStats.completedPomodoros} />
               </div>
             </section>
 
@@ -596,7 +603,7 @@ const App = () => {
               />
             </section>
           </>
-        ) : (
+        ) : viewMode === "settings" ? (
           <section className="mica-panel col-span-full flex gap-6 p-8">
             {/* 左侧导航 */}
             <nav className="flex w-56 flex-col gap-2">
@@ -678,6 +685,22 @@ const App = () => {
                 </div>
               )}
             </div>
+          </section>
+        ) : (
+          <section className="mica-panel col-span-full p-8">
+            <div className="mb-6 flex items-center justify-between">
+              <h2 className="text-2xl font-semibold text-slate-900">统计趋势</h2>
+              <button
+                className="rounded-full p-1.5 text-slate-400 transition hover:bg-white/80 hover:text-slate-600"
+                onClick={() => setViewMode("main")}
+                title="返回"
+              >
+                ✕
+              </button>
+            </div>
+            <StatisticsErrorBoundary>
+              <StatisticsPage history={history} />
+            </StatisticsErrorBoundary>
           </section>
         )}
       </div>

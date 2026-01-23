@@ -28,7 +28,7 @@ export interface Settings {
 export interface DailyStat {
   date: string;
   focusMinutes: number;
-  sessions: number;
+  completedPomodoros: number;
 }
 
 export interface StatsHistory {

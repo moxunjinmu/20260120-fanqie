@@ -2,6 +2,7 @@ export * from "./timer";
 export * from "./task";
 export * from "./settings";
 export * from "./stats";
+export * from "./statistics";
 
 import type { Task } from "./task";
 import type { Settings } from "./settings";
@@ -19,4 +20,4 @@ export interface AppStateSnapshot {
   workSessionsSinceLongBreak: number;
 }
 
-export type ViewMode = "main" | "settings";
+export type ViewMode = "main" | "settings" | "statistics";
